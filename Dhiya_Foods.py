@@ -2,98 +2,110 @@ import streamlit as st
 import pandas as pd
 import random
 import string
-import json
-import os
 from datetime import datetime
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+import requests
 
-# --- Load Google Credentials from Secret (GitHub Actions or Streamlit Cloud env var) ---
-import tempfile
+# Constants for your GitHub CSV (you'll need to update URLs)
+FOOD_DATA_URL = "https://raw.githubusercontent.com/<your-username>/<your-repo>/main/food_items.csv"
+ORDERS_CSV_URL = "https://raw.githubusercontent.com/<your-username>/<your-repo>/main/orders.csv"
+ORDERS_LOCAL_FILE = "orders.csv"
 
-# Load from Streamlit secrets
-with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp_file:
-    tmp_file.write(json.dumps(st.secrets["google_service_account"]).encode("utf-8"))
-    creds_file = tmp_file.name 
+def load_food_data():
+    return pd.read_csv(FOOD_DATA_URL)
 
-# --- Google Sheets Setup ---
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name(creds_file, scope)
-client = gspread.authorize(creds)
-sheet = client.open("DiyaFoodTruckOrders").sheet1
+def load_order_data():
+    try:
+        return pd.read_csv(ORDERS_CSV_URL)
+    except:
+        return pd.DataFrame(columns=["Order No", "Date", "Time", "Day", "Food Items", "Total", "Status"])
 
-# --- Load food items from CSV ---
-@st.cache_data
-def load_menu():
-    return pd.read_csv("https://raw.githubusercontent.com/your-username/your-repo-name/main/menu.csv")
+def save_order_data(df):
+    df.to_csv(ORDERS_LOCAL_FILE, index=False)
+    st.success("Order data updated locally. Please push the CSV to GitHub manually.")
 
-menu_df = load_menu()
-
-# --- Generate Random Order Number ---
 def generate_order_number():
-    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
-# --- Tab Navigation ---
-tab1, tab2 = st.tabs(["Order Billing", "Order Queue"])
+def format_datetime():
+    now = datetime.now()
+    return now.strftime("%Y-%m-%d"), now.strftime("%H:%M:%S"), now.strftime("%A")
+
+# UI Start
+st.set_page_config(page_title="Diya Food Truck Billing App", layout="wide")
+
+tab1, tab2 = st.tabs(["Take Order", "Queue"])
 
 with tab1:
-    st.title("Place a New Order")
-    order_no = generate_order_number()
-    st.write(f"*Order Number:* {order_no}")
+    st.header("Take Order")
+    
+    food_df = load_food_data()
+    order_number = generate_order_number()
 
-    food_items = []
+    st.subheader("Order Number: " + order_number)
+
+    selected_items = []
     quantities = []
 
+    item_cols = st.columns(4)
     for i in range(4):
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            item = st.selectbox(f"Select Food Item {i+1}", menu_df["Item"], key=f"item_{i}")
-        with col2:
-            qty = st.number_input(f"Qty {i+1}", min_value=0, step=1, key=f"qty_{i}")
-        food_items.append(item)
-        quantities.append(qty)
+        with item_cols[i]:
+            item = st.selectbox(f"Select Item {i+1}", options=[""] + food_df['Item'].tolist(), key=f"item{i}")
+            if item:
+                qty = st.number_input(f"Quantity for {item}", min_value=1, value=1, key=f"qty{i}")
+                selected_items.append(item)
+                quantities.append(qty)
 
-    add_more = st.checkbox("Add more items")
-    if add_more:
-        n = st.number_input("How many more?", min_value=1, max_value=10)
-        for i in range(int(n)):
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                item = st.selectbox(f"Extra Item {i+1}", menu_df["Item"], key=f"extra_item_{i}")
-            with col2:
-                qty = st.number_input(f"Extra Qty {i+1}", min_value=0, step=1, key=f"extra_qty_{i}")
-            food_items.append(item)
-            quantities.append(qty)
+    if st.button("Add More Items"):
+        st.experimental_rerun()
 
-    ordered_items = [(item, qty) for item, qty in zip(food_items, quantities) if qty > 0]
+    # Calculate total
     total = 0
-    for item, qty in ordered_items:
-        price = menu_df[menu_df["Item"] == item]["Price"].values[0]
-        total += price * qty
+    item_price_dict = dict(zip(food_df['Item'], food_df['Price']))
+    summary = []
 
-    if ordered_items:
-        st.subheader(f"Total Amount: ₹{total}")
+    for item, qty in zip(selected_items, quantities):
+        price = item_price_dict.get(item, 0)
+        total += price * qty
+        summary.append(f"{item} x{qty}")
+
+    st.write("### Order Summary")
+    st.write(", ".join(summary))
+    st.write(f"*Total Amount:* ₹{total}")
 
     if st.button("Place Order"):
-        date = datetime.now().strftime("%Y-%m-%d")
-        time = datetime.now().strftime("%H:%M:%S")
-        day = datetime.now().strftime("%A")
-        item_str = ", ".join([f"{item} x{qty}" for item, qty in ordered_items])
-        sheet.append_row([order_no, date, time, day, item_str, total, "Queued"])
-        st.success("Order placed and added to queue!")
+        date, time_str, day = format_datetime()
+        new_order = {
+            "Order No": order_number,
+            "Date": date,
+            "Time": time_str,
+            "Day": day,
+            "Food Items": ", ".join(summary),
+            "Total": total,
+            "Status": "Queued"
+        }
+        order_df = load_order_data()
+        order_df = pd.concat([order_df, pd.DataFrame([new_order])], ignore_index=True)
+        save_order_data(order_df)
+        st.success("Order placed successfully!")
 
 with tab2:
-    st.title("Order Queue")
-    data = pd.DataFrame(sheet.get_all_records())
-    queue_data = data[data["Status"] == "Queued"]
+    st.header("Order Queue")
+    queue_df = load_order_data()
+    queue_df = queue_df[queue_df["Status"] == "Queued"]
 
-    for index, row in queue_data.iterrows():
+    for idx, row in queue_df.iterrows():
         st.markdown(f"### Order No: {row['Order No']}")
-        st.write(f"*Items:* {row['Food Items']}")
+        st.markdown(f"*Items*: {row['Food Items']}")
         col1, col2 = st.columns(2)
-        if col1.button("Served", key=f"serve_{row['Order No']}"):
-            sheet.update_cell(index + 2, 7, "Served")  # Status column
-            st.experimental_rerun()
-        if col2.button("Cancelled", key=f"cancel_{row['Order No']}"):
-            sheet.update_cell(index + 2, 7, "Cancelled")
-            st.experimental_rerun()
+        with col1:
+            if st.button(f"Mark as Served - {row['Order No']}"):
+                all_orders = load_order_data()
+                all_orders.loc[all_orders["Order No"] == row["Order No"], "Status"] = "Served"
+                save_order_data(all_orders)
+                st.experimental_rerun()
+        with col2:
+            if st.button(f"Cancel Order - {row['Order No']}"):
+                all_orders = load_order_data()
+                all_orders.loc[all_orders["Order No"] == row["Order No"], "Status"] = "Cancelled"
+                save_order_data(all_orders)
+                st.experimental_rerun()
