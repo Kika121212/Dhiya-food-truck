@@ -6,7 +6,7 @@ from datetime import datetime
 import requests
 
 # Constants for your GitHub CSV (you'll need to update URLs)
-FOOD_DATA_URL = "https://raw.githubusercontent.com/<your-username>/<your-repo>/main/food_items.csv"
+FOOD_DATA_URL = "https://github.com/Kika121212/Dhiya-food-truck/blob/main/menu.csv"
 ORDERS_CSV_URL = "https://raw.githubusercontent.com/<your-username>/<your-repo>/main/orders.csv"
 ORDERS_LOCAL_FILE = "orders.csv"
 
