@@ -7,7 +7,7 @@ import requests
 
 # Constants for your GitHub CSV (you'll need to update URLs)
 FOOD_DATA_URL = "https://raw.githubusercontent.com/Kika121212/Dhiya-food-truck/refs/heads/main/menu.csv"
-ORDERS_CSV_URL = "https://raw.githubusercontent.com/<your-username>/<your-repo>/main/orders.csv"
+ORDERS_CSV_URL = "https://raw.githubusercontent.com/Kika121212/Dhiya-food-truck/refs/heads/main/Orders.csv"
 ORDERS_LOCAL_FILE = "orders.csv"
 
 def load_food_data():
