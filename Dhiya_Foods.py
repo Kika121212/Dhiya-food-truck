@@ -2,20 +2,32 @@ import streamlit as st
 import pandas as pd
 import random
 import string
+import json
+import os
 from datetime import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+# --- Load Google Credentials from Secret (GitHub Actions or Streamlit Cloud env var) ---
+if "GOOGLE_CREDENTIALS" in os.environ:
+    creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
+    with open("temp_credentials.json", "w") as f:
+        json.dump(creds_dict, f)
+    creds_file = "temp_credentials.json"
+else:
+    st.error("Google credentials not found in environment.")
+    st.stop()
+
 # --- Google Sheets Setup ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name("Dhiya.json", scope)
+creds = ServiceAccountCredentials.from_json_keyfile_name(creds_file, scope)
 client = gspread.authorize(creds)
 sheet = client.open("DiyaFoodTruckOrders").sheet1
 
 # --- Load food items from CSV ---
 @st.cache_data
 def load_menu():
-    return pd.read_csv("https://raw.githubusercontent.com/your-repo/menu.csv")
+    return pd.read_csv("https://raw.githubusercontent.com/your-username/your-repo-name/main/menu.csv")
 
 menu_df = load_menu()
 
@@ -28,7 +40,6 @@ tab1, tab2 = st.tabs(["Order Billing", "Order Queue"])
 
 with tab1:
     st.title("Place a New Order")
-
     order_no = generate_order_number()
     st.write(f"*Order Number:* {order_no}")
 
@@ -45,7 +56,6 @@ with tab1:
         quantities.append(qty)
 
     add_more = st.checkbox("Add more items")
-
     if add_more:
         n = st.number_input("How many more?", min_value=1, max_value=10)
         for i in range(int(n)):
@@ -57,7 +67,6 @@ with tab1:
             food_items.append(item)
             quantities.append(qty)
 
-    # Filter and calculate total
     ordered_items = [(item, qty) for item, qty in zip(food_items, quantities) if qty > 0]
     total = 0
     for item, qty in ordered_items:
