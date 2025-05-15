@@ -14,7 +14,7 @@ import tempfile
 # Load from Streamlit secrets
 with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp_file:
     tmp_file.write(json.dumps(st.secrets["GOOGLE_CREDENTIALS"]).encode("utf-8"))
-    creds_file = tmp_file.name 
+    creds_file= tmp_file.name 
 
 # --- Google Sheets Setup ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
