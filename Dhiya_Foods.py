@@ -9,14 +9,12 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- Load Google Credentials from Secret (GitHub Actions or Streamlit Cloud env var) ---
-if "GOOGLE_CREDENTIALS" in os.environ:
-    creds_dict = json.loads(os.environ["GOOGLE_CREDENTIALS"])
-    with open("temp_credentials.json", "w") as f:
-        json.dump(creds_dict, f)
-    creds_file = "temp_credentials.json"
-else:
-    st.error("Google credentials not found in environment.")
-    st.stop()
+import tempfile
+
+# Load from Streamlit secrets
+with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as tmp_file:
+    tmp_file.write(json.dumps(st.secrets["GOOGLE_CREDENTIALS"]).encode("utf-8"))
+    creds_file = tmp_file.name 
 
 # --- Google Sheets Setup ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
